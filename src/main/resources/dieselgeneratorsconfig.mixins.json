@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "com.blorbee.dieselgeneratorsconfig.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "dieselgeneratorsconfig.refmap.json",
+  "mixins": [
+    "FuelTypeMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
