@@ -7,8 +7,7 @@ import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
-import net.neoforged.api.distmarker.Dist;
-import net.neoforged.fml.loading.FMLEnvironment;
+import net.minecraft.world.level.Level;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -50,8 +49,8 @@ public class FuelConfig {
         return GSON.toJson(config);
     }
 
-    public static FuelType.PerEngineProperties getProperties(FuelType fuelType, String engine, FuelType.PerEngineProperties defaults) {
-        JsonObject fuel = getFuelEntry(fuelType);
+    public static FuelType.PerEngineProperties getProperties(FuelType fuelType, String engine, FuelType.PerEngineProperties defaults, Level level) {
+        JsonObject fuel = getFuelEntry(fuelType, level);
         if (fuel == null)
             return defaults;
         if (!fuel.has(engine) || !fuel.get(engine).isJsonObject())
@@ -65,8 +64,8 @@ public class FuelConfig {
         );
     }
 
-    public static float getBurnerMultiplier(FuelType fuelType, float defaults) {
-        JsonObject fuel = getFuelEntry(fuelType);
+    public static float getBurnerMultiplier(FuelType fuelType, float defaults, Level level) {
+        JsonObject fuel = getFuelEntry(fuelType, level);
         if (fuel == null)
             return defaults;
         return getFloat(fuel, "burner_multiplier", defaults);
@@ -96,21 +95,27 @@ public class FuelConfig {
     }
 
     @Nullable
-    private static JsonObject getFuelEntry(FuelType fuelType) {
+    private static JsonObject getFuelEntry(FuelType fuelType, Level level) {
         if (initializing)
             return null;
 
-        if (FMLEnvironment.dist == Dist.CLIENT) {
-            return ClientFuelConfig.getFuelEntry(fuelType);
-        }
+        if (level.isClientSide) {
+            Registry<FuelType> registry = level.registryAccess()
+                .registryOrThrow(FUEL_TYPE_REGISTRY);
 
-        MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
-        if (server == null)
-            return null;
+            ResourceLocation id = registry.getResourceKey(fuelType)
+                .map(ResourceKey::location)
+                .orElse(null);
+
+            if (id == null)
+                return null;
+
+            return getClientEntry(id);
+        }
 
         Registry<FuelType> registry;
         try {
-            registry = server.registryAccess().registryOrThrow(FUEL_TYPE_REGISTRY);
+            registry = level.registryAccess().registryOrThrow(FUEL_TYPE_REGISTRY);
         } catch (IllegalStateException exception) {
             return null;
         }
