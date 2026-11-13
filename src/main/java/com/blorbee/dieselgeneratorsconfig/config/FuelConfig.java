@@ -7,6 +7,8 @@ import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 
@@ -21,7 +23,7 @@ public class FuelConfig {
         .setPrettyPrinting()
         .create();
 
-    private static final ResourceKey<Registry<FuelType>> FUEL_TYPE_REGISTRY =
+    public static final ResourceKey<Registry<FuelType>> FUEL_TYPE_REGISTRY =
         ResourceKey.createRegistryKey(DieselGeneratorsConfig.upperPath("fuel_type"));
 
     private static final Path CONFIG_PATH = FMLPaths.CONFIGDIR.get()
@@ -29,10 +31,24 @@ public class FuelConfig {
         .resolve("fuel_overrides.json");
 
     private static JsonObject config = new JsonObject();
+    private static JsonObject clientConfig = new JsonObject();
+
     private static Registry<FuelType> loadedRegistry;
 
     private static boolean initialized;
     private static boolean initializing;
+
+    @Nullable
+    public static synchronized String getConfigJson(MinecraftServer server) {
+        try {
+            Registry<FuelType> registry = server.registryAccess().registryOrThrow(FUEL_TYPE_REGISTRY);
+            initialize(registry);
+        } catch (IllegalStateException exception) {
+            return null;
+        }
+
+        return GSON.toJson(config);
+    }
 
     public static FuelType.PerEngineProperties getProperties(FuelType fuelType, String engine, FuelType.PerEngineProperties defaults) {
         JsonObject fuel = getFuelEntry(fuelType);
@@ -56,10 +72,37 @@ public class FuelConfig {
         return getFloat(fuel, "burner_multiplier", defaults);
     }
 
+    public static synchronized void setClientConfig(String json) {
+        try {
+            JsonElement element = JsonParser.parseString(json);
+            if (element.isJsonObject()) {
+                clientConfig = element.getAsJsonObject();
+            } else {
+                DieselGeneratorsConfig.LOGGER.error("[{}] Received invalid fuel configuration from server.", DieselGeneratorsConfig.MOD_ID);
+                clientConfig = new JsonObject();
+            }
+        } catch (JsonParseException exception) {
+            DieselGeneratorsConfig.LOGGER.error("[{}] Failed to parse fuel configuration.", DieselGeneratorsConfig.MOD_ID, exception);
+            clientConfig = new JsonObject();
+        }
+    }
+
+    @Nullable
+    public static synchronized JsonObject getClientEntry(ResourceLocation id) {
+        String key = id.toString();
+        return clientConfig.has(key) && clientConfig.get(key).isJsonObject()
+            ? clientConfig.getAsJsonObject(key)
+            : null;
+    }
+
     @Nullable
     private static JsonObject getFuelEntry(FuelType fuelType) {
         if (initializing)
             return null;
+
+        if (FMLEnvironment.dist == Dist.CLIENT) {
+            return ClientFuelConfig.getFuelEntry(fuelType);
+        }
 
         MinecraftServer server = ServerLifecycleHooks.getCurrentServer();
         if (server == null)
